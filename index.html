@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="ru">
+    <head>
+        <script src="js/three.js"></script>
+        <script src="js/tree.js"></script>
+        <script src="js/ImprovedNoise.js"></script>
+        <script src="js/Detector.js"></script>
+        <script src="js/Stats.js"></script>
+        <script src="js/createShaders.js" type="text/javascript"></script>
+        <script src="js/lightmap.js" type="text/javascript"></script>
+    </head>
+    <body>
+        <div id="container"><br /><br /><br /><br /><br />Generating world...</div>
+
+        <script>
+            if (!Detector.webgl) {
+                Detector.addGetWebGLMessage();
+                document.getElementById('container').innerHTML = "";
+            }
+            var lastFrameTime = null;
+            var moveSpeed = 50.0;
+            var wPressed = false;
+            var aPressed = false;
+            var sPressed = false;
+            var dPressed = false;
+            var terIndex=0;
+            var interpolation=100;
+            var currentKeyframe=0;
+            var lastKeyframe=0;
+            var PlantsLoaded=0;
+            var PlantsNeed=0;
+            var container, stats;
+            var camera, scene, renderer;
+            var ctar, cpos;
+            var object;
+            var GreenPlant = [];
+
+            Animal = function (model, x, y, z) {
+                    this.vaypoint=new THREE.Vector2(Math.random() * heightMapSize-heightMapSize/2, Math.random() * heightMapSize-heightMapSize/2);
+                    this.direction=new THREE.Vector3(this.vaypoint.x, this.vaypoint.y, 0).normalize();
+                    this.x=x;
+                    this.y=y;
+                    this.z=z;
+                    this.mesh=null;
+                    this.offset=Math.random() * 6;
+                    this.duration=1000;
+                    this.file=model;
+            };
+            Animal.prototype = {
+                constructor: Animal,
+                setModel: function ( model ,materials) {
+                        this.mesh = new THREE.Mesh( model, new THREE.MeshLambertMaterial( { color: 0x606060, morphTargets: true }));
+                        this.mesh.scale.set( 0.01, 0.01, 0.01 );
+                        this.mesh.position.set(this.x, this.y, this.z);
+                        this.mesh.up.set(0, 0, 1);
+                        this.mesh.lookAt(new THREE.Vector3(1, 0, this.z));
+                        terrain[0].add( this.mesh );
+                        //console.log(this.x+" "+this.y+" "+this.z);
+                        //console.log(this.mesh);
+                },
+                updateMorph: function (  ){
+                    var interpolation = this.duration / ( this.mesh.geometry.morphTargets.length - 1 );
+
+                    var time = ( new Date().getTime()  + this.offset * 100 ) % this.duration;
+                    var keyframe = Math.floor( time / interpolation ) + 1;
+
+                    //var mesh = this.mesh;
+
+                    if ( keyframe != this.currentKeyframe ) {
+
+                        this.mesh.morphTargetInfluences[ this.lastKeyframe ] = 0;
+                        this.mesh.morphTargetInfluences[ this.currentKeyframe ] = 1;
+                        this.mesh.morphTargetInfluences[ keyframe ] = 0;
+
+                        this.lastKeyframe = this.currentKeyframe;
+                        this.currentKeyframe = keyframe;
+
+                    }
+
+                    this.mesh.morphTargetInfluences[ keyframe ] = ( time % interpolation ) / interpolation;
+                    this.mesh.morphTargetInfluences[ this.lastKeyframe ] = 1 - this.mesh.morphTargetInfluences[ keyframe ];
+
+                    var newTime = new Date().getTime();
+                    delta = newTime - this.oldTime;
+                    this.oldTime = newTime;
+                },
+                moveTick: function (  ){
+                    this.updateMorph();
+                    this.mesh.translateZ(0.1);
+                    var vert=(heightMapSize/2.0-Math.round(this.mesh.position.y))*heightMapSize+heightMapSize/2.0+Math.round(this.mesh.position.x);
+                    this.mesh.lookAt(new THREE.Vector3().add(new THREE.Vector3(this.mesh.position.x, this.mesh.position.y, terrain[0].geometry.vertices[vert+1].z),this.direction));
+                    //console.log(this.direction);
+                }
+            }
+
+
+            var Animals = new Array();
+            var clock = new THREE.Clock();
+        //lights
+            var sun = new THREE.DirectionalLight(0xffffff);
+            var sunPosition;
+        //terrain
+            var terrain = new Array();
+            var water=null;
+            var terrainHeightmap = new Image();
+            terrainHeightmap.onload = function() {
+                console.log("loaded");
+                if (terrain[terIndex] === null) {
+                    setupTerrain(terIndex);
+                    scene.add(terrain[terIndex]);
+                    //if(terIndex<15){
+                    //    terIndex++;
+                    //    terrainHeightmap.src = "images/terr/texture_ground_"+terIndex+".png";
+                    //}
+                }
+        //setupTerrain();
+        //generate_terrain();
+                setupObjects();
+            };
+
+            var heightMapSize = 512; //set to dimensions of the square heightmap
+            var heightMapArea = heightMapSize * heightMapSize;
+            var terrainHeightData = new Array();
+            var terrainForestData = new Array();
+            var heightFactor = 1.0; //how far heightmap translates to vertex displacement
+            var tileFactor = 20.0; //how many times texures are tiled across the terrain
+            var shadowmapIntensity = 75; //255 total - intensity of baked shadowmap
+
+            init();
+            render();
+            animate();
+            function init() {
+                container = document.getElementById('container');
+                //window.innerWidth / window.innerHeight
+                camera = new THREE.PerspectiveCamera(45, 1366 / 768, 1, 1000);
+                ctar = new THREE.Vector3(0, 0, 0);
+                cpos = new THREE.Vector3(0, -40, 40);
+                camera.position = cpos;//.set(0, 50, 50);
+                camera.lookAt(ctar);
+
+                scene = new THREE.Scene();
+                scene.fog = new THREE.Fog(0x6495ED, 15, 200);
+                setupLights();
+                scene.add(sun);
+                for (var i = 0; i < 256; i++) {
+                    GreenPlant[i] = null;
+                    //Animals[i] = null;
+                }
+                for (var i = 0; i < 16; i++) {
+                    terrain[i] = null;
+                }
+                terIndex=0;
+                //terrainHeightmap.src = "images/terr/texture_ground_"+terIndex+".png";
+
+                terrainHeightmap.src = "images/terr/texture_ground.png";
+
+                renderer = new THREE.WebGLRenderer({antialias: false, clearColor: 0x000000, clearAlpha: 1, alpha: false, premultipliedAlpha: false});
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                //renderer.shadowMapEnabled = true;
+                //renderer.setClearColor( 0xff0000, 1 );
+                renderer.domElement.style.position = 'absolute';
+                renderer.domElement.style.top = '0px';
+                renderer.domElement.style.rigth = '0px';
+                renderer.domElement.style.left = '0px';
+                renderer.domElement.style.bottom = '0px';
+                renderer.sortObjects = true;
+                container.innerHTML = "";
+
+
+
+                container.appendChild(renderer.domElement);
+
+                stats = new Stats();
+                stats.domElement.style.position = 'absolute';
+                stats.domElement.style.top = '0px';
+                container.appendChild(stats.domElement);
+
+                window.addEventListener('resize', onWindowResize, false);
+                window.addEventListener("keydown", onKeyDown, false);
+                window.addEventListener("keyup", onKeyUp, false);
+                window.addEventListener('DOMMouseScroll', mousewheel, false);
+                window.addEventListener('mousewheel', mousewheel, false);
+
+            }
+            function setupObjects() {
+                var vert=(heightMapSize/2.0)*heightMapSize+heightMapSize/2.0;
+                var names=["horse.js","fox.js","bearBrown.js","mountainlion.js","stork.js"];
+                for(var i=0;i<10;i++){
+                    Animals[i] = new Animal("models/"+names[Math.round(Math.random()*4)],0,0,terrain[0].geometry.vertices[vert].z);
+                    var loader = new THREE.JSONLoader( true );
+                    var t=i;
+                    loader.load( Animals[i].file, function( geometry,materials ){Animals[t].setModel( geometry,materials);});
+                }
+
+
+            }
+            function setupLights() {
+                //lights
+                //sun.castShadow = true;
+                //sun.shadowCameraVisible = false; //set true to see shadow frustum
+                sunPosition = new THREE.Vector3(0, -400, 400);
+                sun.intensity = 0.8;
+                sun.position.set(sunPosition.x, sunPosition.y, sunPosition.z);
+                //sun.shadowCameraNear = 100;
+                //sun.shadowCameraFar = 2500;
+                //sun.shadowBias = 0.0001;
+                //sun.shadowDarkness = 0.35;
+                //sun.shadowMapWidth = 512; //512px by default
+                //sun.shadowMapHeight = 512; //512px by default
+
+                /*var spotLight = new THREE.SpotLight( 0xffffff );
+                spotLight.position.set( 100, 1000, 100 );
+                spotLight.castShadow = true;
+                spotLight.shadowMapWidth = 1024;
+                spotLight.shadowMapHeight = 1024;
+                spotLight.shadowCameraNear = 500;
+                spotLight.shadowCameraFar = 4000;
+                spotLight.shadowCameraFov = 30;
+                scene.add( spotLight );*/
+                scene.add(sun);
+            }
+            function setupTerrain(index) {
+                console.log("setup");
+                getHeightData(index,terrainHeightmap, heightMapSize, heightMapSize);
+                var terrainShadowmap = new THREE.Texture(
+                        generateTexture(terrainHeightData[index], heightMapSize, heightMapSize, shadowmapIntensity, sunPosition),
+                        new THREE.UVMapping(),
+                        THREE.ClampToEdgeWrapping,
+                        THREE.ClampToEdgeWrapping
+                        );
+                terrainShadowmap.needsUpdate = true;
+                //console.log(terrainShader.vertexShader);
+                //console.log("////////////////////////////////");
+                //console.log(terrainShader.fragmentShader);
+
+                //sets uniforms to be passed to the shader
+                var terrainUniforms = THREE.UniformsUtils.clone(terrainShader.uniforms);
+                //var terrainUniforms = THREE.UniformsUtils.merge(terrainShader.uniforms,THREE.UniformsLib.common);
+                terrainUniforms[ "tileFactor" ].value = tileFactor;
+                terrainUniforms[ "heightFactor" ].value = heightFactor;
+                terrainUniforms[ "texture_shadow" ].value = terrainShadowmap;
+                terrainUniforms[ "texture_dirt" ].value = THREE.ImageUtils.loadTexture("images/terr/texture_ground_bare.jpg");
+                terrainUniforms[ "texture_grass" ].value = THREE.ImageUtils.loadTexture("images/terr/texture_ground_grass.jpg");
+                terrainUniforms[ "texture_rock" ].value = THREE.ImageUtils.loadTexture("images/terr/texture_ground_snow.jpg");
+
+                //allows textures to be tiled
+                terrainUniforms[ "texture_grass" ].value.wrapS = THREE.RepeatWrapping;
+                terrainUniforms[ "texture_grass" ].value.wrapT = THREE.RepeatWrapping;
+                terrainUniforms[ "texture_dirt" ].value.wrapS = THREE.RepeatWrapping;
+                terrainUniforms[ "texture_dirt" ].value.wrapT = THREE.RepeatWrapping;
+                terrainUniforms[ "texture_rock" ].value.wrapS = THREE.RepeatWrapping;
+                terrainUniforms[ "texture_rock" ].value.wrapT = THREE.RepeatWrapping;
+
+                terrain[index] = new THREE.Mesh(
+                        new THREE.PlaneGeometry(heightMapSize, heightMapSize, heightMapSize - 1, heightMapSize - 1),
+                       // new THREE.MeshLambertMaterial( { color: 0x606060 })
+                       new THREE.ShaderMaterial({
+                    fog: true,
+                    lights: true,
+                    //wireframe: true,
+                    uniforms: terrainUniforms,
+                    vertexShader: terrainShader.vertexShader,
+                    fragmentShader: terrainShader.fragmentShader
+                })
+                        );
+                //!water = new THREE.Mesh(
+                //!        new THREE.PlaneGeometry(heightMapSize, heightMapSize, heightMapSize - 1, heightMapSize - 1),
+                //!        new THREE.MeshBasicMaterial()
+                //!        );
+                //deforms the terrain plane, based on pixel data from the heightmap
+                for (var i = 0, l = terrain[index].geometry.vertices.length; i < l; i++) {
+                    if(i>=0&&i<=heightMapSize*2)
+                        terrain[index].geometry.vertices[i].z = -10;
+                    else
+                    if(i%heightMapSize<=1)
+                        terrain[index].geometry.vertices[i].z = -10;
+                    else
+                    if(i%heightMapSize>=heightMapSize-2)
+                        terrain[index].geometry.vertices[i].z = -10;
+                    else
+                    if(i>=heightMapSize*(heightMapSize-1))
+                        terrain[index].geometry.vertices[i].z = -10;
+                    else
+                    if(i>=heightMapSize*(heightMapSize-2))
+                        terrain[index].geometry.vertices[i].z = -10;
+                    else
+                        terrain[index].geometry.vertices[i].z = terrainHeightData[index][i] * heightFactor;
+                }
+                //terrain[index].geometry.computeFaceNormals();
+                //terrain[index].geometry.computeVertexNormals();
+                //terrain[index].geometry.computeTangents();
+                terrain[index].position.set(0,0,0);
+                terrain[index].rotation.set(0,0,0);
+                //!water.position.set(0,0,4.5);
+                //!terrain[index].add(water);
+                //terrain.doubleSided = true;
+                //terrain[index].receiveShadow = true;
+                //terrain[index].castShadow = true;
+            }
+            function flattenArray(input) {
+                var retArray = [];
+                for (var i = 0; i < input.length; i++) {
+                    for (var j = 0; j < input[i].length; j++) {
+                        retArray.push(input[i][j]);
+                    }
+                }
+                //console.log("Length:"+retArray.length);
+                return retArray;
+            }
+            function getHeightData(index,img, heightMapWidth, heightMapHeight)
+            {
+                var canvas = document.createElement('canvas');
+                canvas.width = heightMapWidth;
+                canvas.height = heightMapHeight;
+                var context = canvas.getContext('2d');
+
+                var size = heightMapWidth * heightMapHeight;//, data = new Float32Array(size);
+                context.drawImage(img, 0, 0);
+                terrainHeightData[index]=new Float32Array(size);
+                terrainForestData[index]=new Uint8Array(size);
+                for (var i = 0; i < size; i++) {
+                    terrainHeightData[index][i] = 0;
+                    terrainForestData[index][i] = 0;
+                }
+
+                var imgd = context.getImageData(0, 0, heightMapWidth, heightMapHeight);
+                var pix = imgd.data;
+                var j = 0;
+                var all = 0;
+                for (var i = 0, nn = pix.length; i < nn; i += (4)) {
+                    all = pix[i];//+pix[i+1]+pix[i+2];
+                    terrainHeightData[index][j++] = (all / 21.0);///30.0;
+                    terrainForestData[index][j-1] = pix[i + 1];
+                    if (pix[i + 1] > 1) {
+
+                        //console.log(pix[i+1]+"-"+i+":"+GreenPlant[pix[i+1]]);
+                        if (GreenPlant[pix[i + 1]] === null) {//G component of terrain using for plants
+                            GreenPlant[pix[i + 1]] = new THREE.Geometry();
+                            var ind = pix[i + 1];
+                            PlantsNeed++;
+                            //GenerateForest(img, heightMapWidth, heightMapHeight);
+                            var loader = new THREE.JSONLoader();
+                            loader.load('models/plants/tree' + ind + '.js', function(geometry,materials) {
+
+                                //geometry.materials[ 0 ].map.premultiplyAlpha = true;
+                                //geometry.materials[ 0 ].blending=THREE.CustomBlending;
+                                //geometry.materials[ 0 ].blendEquation=THREE.AddEquation;
+                                //geometry.materials[ 0 ].blendSrc=THREE.SrcAlphaFactor;
+                                //geometry.materials[ 0 ].blendDst=THREE.SrcColorFactor;
+                                //geometry.materials[ 0 ].combine = THREE.MixOperation;
+
+                                //geometry.materials[ 1 ].blending=THREE.NormalBlending;
+                                //geometry.materials[ 1 ].blendSrc=THREE.SrcAlphaFactor;
+                                //geometry.materials[ 1 ].blendDst=THREE.ZeroFactor;
+                                //geometry.materials[ 0 ].transparent = true;
+                                //geometry.doubleSided=true;
+                                //geometry.materials[ 0 ].alphaTest=0.5;
+                                geometry.dynamic=false;
+                                GreenPlant[ind] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+                                PlantsLoaded++;
+                                if(PlantsLoaded==PlantsNeed)GenerateForest(index, heightMapSize);
+                                //need to chk for all model loaded
+
+                            });
+
+                        }
+                    }
+                }
+                //if(all>0){
+                //object=new THREE.Mesh( new THREE.CubeGeometry( 2, 2, 2 ),new THREE.MeshPhongMaterial());
+                //object.castShadow = true;
+                //object.receiveShadow = true;
+                //object.position.set(0,0,20);
+                //object.rotation.set(0,0,45);
+                //scene.add( object );
+                //}
+            }
+
+
+            function GenerateForest(index, heightMapWidth)
+            {
+                var j = 0;
+                var all = 0;
+                for (var i = 0, n = terrainForestData[index].length; i < n; i ++) {
+                    //all=pix[i];
+                    if (terrainForestData[index][i] > 1) {
+                        var mesh = GreenPlant[terrainForestData[index][i]].clone();
+                        //mesh.receiveShadow = true;
+                        //mesh.castShadow = true;
+                        //mesh.doubleSided = true;
+                        //mesh.material.alphaTest=1;
+                        var rn = (Math.random() * 40.0) / 100.0;
+                        mesh.scale.set(0.8 + rn, 0.8 + rn, 0.8 + rn);
+                        mesh.position.x = (i % heightMapWidth) - heightMapWidth/2;
+                        mesh.position.y = -(i / heightMapWidth) + heightMapWidth/2;
+                        mesh.position.z = terrainHeightData[index][i]*heightFactor-0.1;
+                        mesh.rotation.set(0, 0, Math.random() * 360.0);
+                        //mesh.scale.set(5, 5, 5);
+                        //mesh.position.x = 0.0;
+                        //mesh.position.y = -15.0;
+                        //!pix[i] / 21.0 - 0.1;
+                        //mesh.rotation.set(Math.PI,0,0);
+                        terrain[index].add(mesh);
+                        //console.log(mesh);
+                        //return;
+                    }
+                }
+
+                /*
+                         loader.load( { model: "models/animated/elderlyWalk.js", callback: function( geometry ) {
+
+                         addMorph( geometry, 130, 0.05, 2000, -500, -250, 345, 0xff1100, false );
+                         //addMorph( geometry, 130, 0.05, 2000, -500, -250, 445, 0xff4400, false );
+
+                         } } );
+                         */
+            }
+            function onWindowResize() {
+                //camera.aspect = window.innerWidth / window.innerHeight;
+                //camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+
+            //
+            function render() {
+                requestAnimationFrame(render);
+                renderer.render(scene, camera);
+                stats.update();
+            }
+            function animate() {
+                requestAnimationFrame(animate);
+                calcframe();
+            }
+            function onKeyDown(evt) {
+                switch (evt.keyCode) {
+                    case 87: // 'w'
+                        wPressed = true;
+                        break;
+                    case 65: // 'a'
+                        aPressed = true;
+                        break;
+                    case 83: // 's'
+                        sPressed = true;
+                        break;
+                    case 68: // 'd'
+                        dPressed = true;
+                        break;
+                }
+            }
+
+            function onKeyUp(evt) {
+                switch (evt.keyCode) {
+                    case 87: // 'w'
+                        wPressed = false;
+                        break;
+                    case 65: // 'a'
+                        aPressed = false;
+                        break;
+                    case 83: // 's'
+                        sPressed = false;
+                        break;
+                    case 68: // 'd'
+                        dPressed = false;
+                        break;
+                }
+            }
+
+            function mousewheel(event)
+            {
+                var fovMAX = 45;
+                var fovMIN = 10;
+
+                camera.fov -= event.wheelDeltaY * 0.025;
+                camera.fov = Math.max(Math.min(camera.fov, fovMAX), fovMIN);
+                camera.projectionMatrix = new THREE.Matrix4().makePerspective(camera.fov, 1366 / 768, 1, 1000);
+                /*cpos.y +=event.wheelDeltaY * 0.025;
+                 cpos.z -=event.wheelDeltaY * 0.025;
+                 if(cpos.z>40){
+                 cpos.y -=event.wheelDeltaY * 0.025;
+                 cpos.z +=event.wheelDeltaY * 0.025;
+                 }
+                 if(cpos.z<25){
+                 cpos.y -=event.wheelDeltaY * 0.025;
+                 cpos.z +=event.wheelDeltaY * 0.025;
+                 }
+                 camera.position=cpos;*/
+            }
+            function calcframe() {
+                var now = new Date().getTime() / 1000.0;
+                if (lastFrameTime !== null)
+                {
+                    var dt = now - lastFrameTime;
+                    var dYaw = dt * moveSpeed;
+                    if (wPressed) {
+                        cpos.y += dYaw;
+                    }
+                    if (sPressed) {
+                        cpos.y -= dYaw;
+                    }
+                    if (aPressed) {
+                        cpos.x -= dYaw;
+                    }
+                    if (dPressed) {
+                        cpos.x += dYaw;
+                    }
+                }
+                lastFrameTime = now;
+                camera.position = cpos;//new THREE.Vector3(camera.position.x-(Math.abs((camera.position.x-cpos.x)/2.0)<0.1?0:(camera.position.x-cpos.x)/2.0),cpos.y,cpos.z);;
+                console.log(Animals.length);
+                for (var i = 0, n = Animals.length; i < n; i ++) {
+                if ( Animals[i]) {
+                    if(Animals[i].mesh){
+                        Animals[i].moveTick();
+                    }
+                }}
+
+                //renderer.render(scene, camera);
+                }
+
+/*function GenerateTree(ind) {
+var tmap1 = THREE.ImageUtils.loadTexture('models/plants/branch6.png');
+tmap1.premultiplyAlpha = true;
+tmap1.needsUpdate = true;
+var material1 = new THREE.MeshBasicMaterial({ map: tmap1});
+material1.transparent = true;
+material1.blending = THREE.NormalBlending;
+material1.depthTest = false;
+//material1.blending = THREE.CustomBlending;
+//material1.blendSrc = THREE.SrcAlphaFactor;
+//material1.blendDst = THREE.SrcColorFactor;
+//material1.blendEquation = THREE.AddEquation;
+var tmap2 = THREE.ImageUtils.loadTexture('models/plants/trunk3.png');
+var tmap3 = THREE.ImageUtils.loadTexture('models/plants/wood1Bump.png');
+//tmap2.premultiplyAlpha = false;
+//tmap2.needsUpdate = true;
+var material2 = new THREE.MeshPhongMaterial({ map: tmap2, bumpScale: 0.5});// bumpMap:tmap3
+material2.map.wrapS = THREE.RepeatWrapping;
+material2.map.wrapT = THREE.RepeatWrapping;
+material2.transparent = false;
+material2.blending = THREE.NoBlending;
+GreenPlant[ind].materials = [material1, material2];
+var myTree = new Tree({"seed": 152, "segments": 6, "levels": 3, "vMultiplier": 1.16, "twigScale": 0.44, "initalBranchLength": 0.49, "lengthFalloffFactor": 0.85, "lengthFalloffPower": 0.99, "clumpMax": 0.454, "clumpMin": 0.246, "branchFactor": 3.2, "dropAmount": 0.09, "growAmount": 0.235, "sweepAmount": 0.01, "maxRadius": 0.111, "climbRate": 0.41, "trunkKink": 0.0, "treeSteps": 5, "taperRate": 0.835, "radiusFalloffRate": 0.73, "twistRate": 2.06, "trunkLength": 2.45, "trunkMaterial": "TrunkType3", "twigMaterial": "BranchType2"});
+var verts = flattenArray(myTree.verts);
+console.log("verts:" + verts.length / 3.0);
+for (var n = 0, l = verts.length; n < l; n += 3) {
+    GreenPlant[ind].vertices.push(new THREE.Vector3(verts[n + 0], verts[n + 2], verts[n + 1]));
+}
+verts = flattenArray(myTree.UV);
+console.log("UV:" + verts.length / 2.0);
+for (var n = 0, l = verts.length; n < l; n += 2) {
+    //GreenPlant[pix[i+1]].faceVertexUvs.push( new THREE.UV( verts[n+0], verts[n+1]) );
+    GreenPlant[ind].faceUvs[0].push(new THREE.UV(verts[n + 0], verts[n + 1]));
+}
+verts = flattenArray(myTree.faces);
+var normals = flattenArray(myTree.normals);
+var normal = new THREE.Vector3(0, 1, 0);
+var color = new THREE.Color(0xffaa00);
+for (var n = 0, l = verts.length; n < l; n += 3) {
+    GreenPlant[ind].faces.push(new THREE.Face3(verts[n + 2], verts[n + 1], verts[n + 0]));
+    GreenPlant[ind].faces[GreenPlant[ind].faces.length - 1].materialIndex = 1;
+    GreenPlant[ind].faceVertexUvs[0].push([
+        GreenPlant[ind].faceUvs[0][verts[n + 2]],
+        GreenPlant[ind].faceUvs[0][verts[n + 1]],
+        GreenPlant[ind].faceUvs[0][verts[n + 0]]
+            ]);
+}
+verts = flattenArray(myTree.vertsTwig);
+var vertoffset = GreenPlant[pix[i + 1]].vertices.length;
+for (var n = 0, l = verts.length; n < l; n += 3) {
+    GreenPlant[ind].vertices.push(new THREE.Vector3(verts[n + 0], verts[n + 2], verts[n + 1]));
+}
+verts = flattenArray(myTree.uvsTwig);
+for (var n = 0, l = verts.length; n < l; n += 2) {
+    //GreenPlant[pix[i+1]].faceVertexUvs.push( new THREE.UV( verts[n+0], verts[n+1]) );
+    GreenPlant[ind].faceUvs[0].push(new THREE.UV(verts[n + 0], verts[n + 1]));
+}
+verts = flattenArray(myTree.facesTwig);
+//var normals=flattenArray(myTree.normals);
+//var normal = new THREE.Vector3( 0, 1, 0 );
+//var color = new THREE.Color( 0xffaa00 );
+for (var n = 0, l = verts.length; n < l; n += 3) {
+    GreenPlant[ind].faces.push(new THREE.Face3(vertoffset + verts[n + 2], vertoffset + verts[n + 1], vertoffset + verts[n + 0]));
+    GreenPlant[ind].faces[GreenPlant[pix[i + 1]].faces.length - 1].materialIndex = 0;
+    GreenPlant[ind].faceVertexUvs[0].push([
+        GreenPlant[ind].faceUvs[0][vertoffset + verts[n + 2]],
+        GreenPlant[ind].faceUvs[0][vertoffset + verts[n + 1]],
+        GreenPlant[ind].faceUvs[0][vertoffset + verts[n + 0]]
+            ]);
+}
+GreenPlant[ind].mergeVertices();
+GreenPlant[ind].computeFaceNormals();
+//GreenPlant[pix[i+1]].computeTangents();
+GreenPlant[ind].dynamic = false;
+}*/
+
+
+
+        </script>
+    </body>
+
