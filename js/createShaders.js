@@ -9,6 +9,12 @@ var custom = {
         "uniform sampler2D texture_shadow;",
         "uniform float heightFactor;",
         "uniform float tileFactor;",
+        "uniform float ring_width;",
+        "uniform vec4 ring_color;",
+        "uniform vec3 ring_center;",
+        "uniform float ring_radius;",
+//        "varying vec3 vPosition;",
+
         ].join("\n"),
 
         terrainBlend_fragment: [
@@ -35,6 +41,22 @@ var custom = {
 
         "color = color * shadow;",
         "gl_FragColor = color;",
+        "float distance = sqrt((mvPosition.x - ring_center.x) * (mvPosition.x - ring_center.x) + (mvPosition.y - ring_center.y) * (mvPosition.y - ring_center.y));",
+        "if (distance < ring_radius + ring_width / 2.0 && distance > ring_radius - ring_width / 2.0) {",
+        "    gl_FragColor.r += ring_color.r;",
+        "    gl_FragColor.b += ring_color.b;",
+        "    gl_FragColor.g += ring_color.g;",
+        "    gl_FragColor.a += ring_color.a;",
+        "    gl_FragColor = normalize(gl_FragColor);",
+        "}",
+        //"if (distance < 3.0) {",
+        //"    float tiles = 1.0 / 150.0;",
+        //"    float val = mod(vUv.y, tiles);",
+        //"    if (mod(vUv.x, tiles) < .003 || mod(vUv.y, tiles) < .003) {",
+        //"        gl_FragColor = gl_FragColor * (distance / 3.0);",
+        //"        gl_FragColor.a = 1.0;",
+        //"    }",
+        //"}",
         ].join("\n")
     }
 }
@@ -56,6 +78,11 @@ var terrainShader = {
         texture_shadow: { type: "t", value: null },
         heightFactor:  { type: "f", value: []},
         tileFactor: { type: "f", value: []},
+        ring_width: { type: 'f', value: [] },
+        ring_color: { type: 'v4', value: new THREE.Vector4(1.0, 0.0, 0.0, 1.0) },
+        ring_center: { type: 'v3', value: new THREE.Vector3() },
+        ring_radius: { type: 'f', value: [] },
+
         //] ),
 
         //common
