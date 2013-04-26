@@ -146,7 +146,7 @@ var terrainShader = {
 		"varying vec3 vLightFront;",
 		
 //        THREE.ShaderChunk[ "lights_lambert_pars_vertex" ],
-        //THREE.ShaderChunk[ "shadowmap_pars_vertex" ],
+        THREE.ShaderChunk[ "shadowmap_pars_vertex" ],
 
         "void main(void) {",
 
@@ -159,7 +159,7 @@ var terrainShader = {
 			"vLightWeighting=vec3(1.0,1.0,1.0);",
 
 //            THREE.ShaderChunk[ "lights_lambert_vertex" ],
-            //THREE.ShaderChunk[ "shadowmap_vertex" ],
+            THREE.ShaderChunk[ "shadowmap_vertex" ],
 
             "gl_Position = projectionMatrix * mvPosition;",
 

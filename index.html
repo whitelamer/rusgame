@@ -6,6 +6,9 @@
         <script src="js/ImprovedNoise.js"></script>
         <script src="js/Detector.js"></script>
         <script src="js/Stats.js"></script>
+        <script src="js/Animal.js" type="text/javascript"></script>
+        <script src="js/Charater.js" type="text/javascript"></script>
+        <script src="js/House.js" type="text/javascript"></script>
         <script src="js/createShaders.js" type="text/javascript"></script>
         <script src="js/lightmap.js" type="text/javascript"></script>
     </head>
@@ -33,6 +36,10 @@
             var aMouse = false;
             var sMouse = false;
             var dMouse = false;
+
+            var qPressed = false;
+            var ePressed = false;
+
             var terIndex=0;
             var interpolation=100;
             var currentKeyframe=0;
@@ -55,123 +62,12 @@
                     plot_coordinates: {x: null, y: null},
                     vertex_coordinates: {x: null, y: null}
             };
-            Animal = function (model, x, y, z) {
-                    this.waypoint=new THREE.Vector2(Math.random() * heightMapSize-heightMapSize/2, Math.random() * heightMapSize-heightMapSize/2);
-                    this.direction=new THREE.Vector3(0, 0, 0);
-                    this.x=x;
-                    this.y=y;
-                    this.z=z;
-                    this.mesh=null;
-                    this.offset=Math.random() * 6;
-                    this.duration=1000;
-                    this.file=model;
-                    this.spline=null;
-                    this.t=0.0;
-            };
-            Animal.prototype = {
-                constructor: Animal,
-                setModel: function ( model ,materials) {
-                        this.mesh = new THREE.Mesh( model, new THREE.MeshLambertMaterial( { color: 0x606060, morphTargets: true }));
-                        this.mesh.scale.set( 0.01, 0.01, 0.01 );
-                        this.mesh.position.set(this.x, this.y, this.z);
-                        this.mesh.up.set(0, 0, 1);
-                        this.mesh.lookAt(new THREE.Vector3(1, 0, this.z));
-                        terrain[0].add( this.mesh );
-                        //console.log(this.x+" "+this.y+" "+this.z);
-                },
-                setMesh: function ( mesh ) {
-                        this.mesh = mesh.clone();
-                        this.mesh.scale.set( 0.01, 0.01, 0.01 );
-                        this.mesh.position.set(this.x, this.y, this.z);
-                        //this.mesh.rotation.y = Math.PI/2;
-                        this.mesh.up.set(0, 0, 1);
-                        this.mesh.lookAt(new THREE.Vector3(this.x, this.y, this.z));
-                        terrain[0].add( this.mesh );
-                        //this.regenWay();
-                        //console.log(this.x+" "+this.y+" "+this.z);
-                },
-                updateMorph: function (  ){
-                    //console.log(this.file+" "+this.mesh.geometry.morphTargets.length);
-                    var interpolation = this.duration / ( this.mesh.geometry.morphTargets.length - 1 );
 
-                    var time = ( new Date().getTime()  + this.offset * 100 ) % this.duration;
-                    var keyframe = Math.floor( time / interpolation ) + 1;
-
-                    //var mesh = this.mesh;
-
-                    if ( keyframe != this.currentKeyframe ) {
-
-                        this.mesh.morphTargetInfluences[ this.lastKeyframe ] = 0;
-                        this.mesh.morphTargetInfluences[ this.currentKeyframe ] = 1;
-                        this.mesh.morphTargetInfluences[ keyframe ] = 0;
-
-                        this.lastKeyframe = this.currentKeyframe;
-                        this.currentKeyframe = keyframe;
-
-                    }
-
-                    this.mesh.morphTargetInfluences[ keyframe ] = ( time % interpolation ) / interpolation;
-                    this.mesh.morphTargetInfluences[ this.lastKeyframe ] = 1 - this.mesh.morphTargetInfluences[ keyframe ];
-
-                    var newTime = new Date().getTime();
-                    delta = newTime - this.oldTime;
-                    this.oldTime = newTime;
-                },
-                regenWay: function( ){
-                    var start=new THREE.Vector3(this.x,this.y,this.z);
-                    var lookat=new THREE.Vector3(0,0,0);
-                    var prestart=new THREE.Vector3(this.x-1,this.y-1,this.z);
-                    if(this.spline){
-                        start=this.spline.getPoint(1);
-                        prestart=this.spline.getPoint(0.9);
-                    }
-                    //console.log(start);
-                    var randomPoints = [];
-                    for ( var i = 0; i < 20; i ++ ) {
-                        randomPoints.push(start.clone());
-                        lookat=start.clone();
-                        lookat.subSelf(prestart);
-                        prestart=start.clone();
-
-                        do {
-                            start=prestart.clone();
-                            var angle=Math.random()*90-45;
-                            var axis = new THREE.Vector3( 0, 0, 1 );
-                            var matrix = new THREE.Matrix4().makeRotationAxis( axis, angle* (Math.PI/180) );
-                            lookat.setZ(0);
-                            matrix.multiplyVector3( lookat );
-                            lookat.setLength(1);
-                            start.addSelf(lookat);
-                        }while(start.x<-(heightMapSize/2)+5&&start.x>heightMapSize/2-5&&start.y<-(heightMapSize/2)+5&&start.y>heightMapSize/2-5)
-                        //console.log("Now Start: "+start.x+" "+start.y+" "+start.z);
-
-                        //console.log(lookat);
-                        //var x=start.x+lookat.x;//Math.random()*4-2;
-                        //var y=start.y+lookat.y;//Math.random()*4-2;
-                        start.setZ(getTerrainHeigth(start.x,start.y));
-                        //start=new THREE.Vector3(x,y,z);
-                        //console.log(start);
-                    }
-                    this.spline = new THREE.SplineCurve3(randomPoints);
-                },
-                moveTick: function (  ){
-                    this.updateMorph();
-                    if(!this.spline){
-                        this.regenWay();
-                    }
-                    this.mesh.position = this.spline.getPoint(this.t);
-                    this.t+=0.01;
-                    if(this.t>=1.0)this.regenWay();
-                    this.t=this.t%1.0;
-                    var dir=this.spline.getPoint(this.t);
-                    this.mesh.lookAt(dir);
-                }
-            }
-
-
+            var House = null;
             var Animals = new Array();
+            var Chars = new Array();
             var Objects =new Array();
-            var clock = new THREE.Clock();
+            var globalclock = new THREE.Clock();
         //lights
             var sun = new THREE.DirectionalLight(0xffffff);
             var sunPosition;
@@ -194,6 +90,7 @@
         //setupTerrain();
         //generate_terrain();
                 loadObjects();
+
             };
 
             var heightMapSize = 512; //set to dimensions of the square heightmap
@@ -245,9 +142,9 @@
                 //container.innerHTML = "";
                 //container.appendChild(renderer.domElement);
 
-                stats = new Stats();
-                stats.domElement.style.position = 'absolute';
-                stats.domElement.style.top = '0px';
+                //stats = new Stats();
+                //stats.domElement.style.position = 'absolute';
+                //stats.domElement.style.top = '0px';
                 //container.appendChild(stats.domElement);
 
                 window.addEventListener('resize', onWindowResize, false);
@@ -258,16 +155,27 @@
                 window.addEventListener('mousemove', onmousemove, false);
 
             }
+
             function loadHelper(index) {
                 return function( geometry,materials ){
                     ObjectsLoaded++;
                     document.getElementById('objcount').innerHTML = ObjectsLoaded;
-                    Objects[index]=new THREE.Mesh( geometry, new THREE.MeshLambertMaterial( { color: 0x606060, morphTargets: true }));
+                    if(index>=20){
+                        Objects[index]=new THREE.Mesh( geometry, new THREE.MeshFaceMaterial(materials));
+                    }else{
+                        //var mat=new THREE.MeshLambertMaterial( materials)
+                        //materials.morphTargets=true;
+                        Objects[index]=new THREE.MorphAnimMesh( geometry, new THREE.MeshFaceMaterial(materials));
+                        Objects[index].material.materials[0].morphTargets=true;
+                        //if(index==1)console.log( Objects[index]);
+                        //Objects[index]=new THREE.MorphAnimMesh( geometry, new THREE.MeshLambertMaterial( { color: 0x606060, morphTargets: true }));
+                        //Objects[index].material.morphTargets=true;
+                    }
                     if(ObjectsLoaded==ObjectsTotal)setupObjects();
                 }
             }
             function loadObjects(){
-                var names=["horse.js","fox.js","bearBrown.js","mountainlion.js","stork.js"];
+                var names=["horse.js","fox.js","bearBrown.js","mountainlion.js","stork.js"];//
                 ObjectsLoaded=0;
                 ObjectsTotal=names.length;
                 document.getElementById('objtotal').innerHTML = ObjectsTotal;
@@ -279,7 +187,20 @@
                     var loader = new THREE.JSONLoader( true );
                     loader.load( "models/"+names[i], loadHelper( i ));
                 }
-
+                ObjectsTotal++;
+                loader.load( "models/dor.js", loadHelper( 20 ));
+                ObjectsTotal++;
+                loader.load( "models/window.js", loadHelper( 21 ));
+                //for(var i=0;i<1;i++){
+                var chloader = new THREE.JSONLoader( true );
+                chloader.load( "models/man.js",function(geometry,materials) {//models/man.js
+                        THREE.AnimationHandler.add( geometry.animation );
+                        Chars[0] = new Charater("",0,0,0);
+                        Chars[0].setMesh(new THREE.SkinnedMesh(geometry,new THREE.MeshFaceMaterial(materials),false));
+                    }
+                );
+                document.getElementById('objtotal').innerHTML = ObjectsTotal;
+                //}
 
 
             }
@@ -287,27 +208,32 @@
                 //var vert=(heightMapSize/2.0)*heightMapSize+heightMapSize/2.0;
                 for(var i=0;i<150;i++){
                     Animals[i] = new Animal("",Math.random()*heightMapSize-heightMapSize/2.0,Math.random()*heightMapSize-heightMapSize/2.0,0);//terrain[0].geometry.vertices[vert].z);
-                    //Animals[i].setMesh(Objects[0]);
-                    Animals[i].setMesh(Objects[Math.round(Math.random()*4)]);
+                    //Animals[i].setMesh(Objects[5]);
+                    Animals[i].setMesh(Objects[Math.round(Math.random()*(4))]);
                 }
+                loadConstructions();
+                //for(var i=0;i<1;i++){
+
+                //}
                 container.innerHTML = "";
                 container.appendChild(renderer.domElement);
-                container.appendChild(stats.domElement);
+                //container.appendChild(stats.domElement);
                 container.style.cursor = 'none';
+
             }
             function setupLights() {
                 //lights
-                //sun.castShadow = true;
-                //sun.shadowCameraVisible = false; //set true to see shadow frustum
+                sun.castShadow = true;
+                sun.shadowCameraVisible = false; //set true to see shadow frustum
                 sunPosition = new THREE.Vector3(0, -400, 400);
                 sun.intensity = 0.8;
                 sun.position.set(sunPosition.x, sunPosition.y, sunPosition.z);
-                //sun.shadowCameraNear = 100;
-                //sun.shadowCameraFar = 2500;
-                //sun.shadowBias = 0.0001;
-                //sun.shadowDarkness = 0.35;
-                //sun.shadowMapWidth = 512; //512px by default
-                //sun.shadowMapHeight = 512; //512px by default
+                sun.shadowCameraNear = 100;
+                sun.shadowCameraFar = 2500;
+                sun.shadowBias = 0.0001;
+                sun.shadowDarkness = 0.35;
+                sun.shadowMapWidth = 512; //512px by default
+                sun.shadowMapHeight = 512; //512px by default
 
                 /*var spotLight = new THREE.SpotLight( 0xffffff );
                 spotLight.position.set( 100, 1000, 100 );
@@ -400,7 +326,7 @@
                 //!water.position.set(0,0,4.5);
                 //!terrain[index].add(water);
                 //terrain.doubleSided = true;
-                //terrain[index].receiveShadow = true;
+                terrain[index].receiveShadow = true;
                 //terrain[index].castShadow = true;
 
                 plane = new THREE.Mesh(
@@ -485,6 +411,7 @@
                                 //geometry.materials[ 0 ].alphaTest=0.5;
                                 geometry.dynamic=false;
                                 GreenPlant[ind] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+                                console.log(materials);
                                 PlantsLoaded++;
                                 document.getElementById('treecount').innerHTML = PlantsLoaded;
                                 if(PlantsLoaded==PlantsNeed)GenerateForest(index, heightMapSize);
@@ -515,10 +442,10 @@
                     if (terrainForestData[index][i] > 1) {
                         var mesh = GreenPlant[terrainForestData[index][i]].clone();
                         //mesh.receiveShadow = true;
-                        //mesh.castShadow = true;
+                        mesh.castShadow = true;
                         //mesh.doubleSided = true;
                         //mesh.material.alphaTest=1;
-                        var rn = (Math.random() * 40.0) / 100.0;
+                        var rn = (Math.random() * 100.0) / 100.0;
                         mesh.scale.set(0.8 + rn, 0.8 + rn, 0.8 + rn);
                         mesh.position.x = (i % heightMapWidth) - heightMapWidth/2;
                         mesh.position.y = -(i / heightMapWidth) + heightMapWidth/2;
@@ -555,13 +482,14 @@
                 requestAnimationFrame(render);
                 renderer.render(scene, camera);
                 updateMouseCoordinates();
-                stats.update();
+                //stats.update();
             }
             function animate() {
                 requestAnimationFrame(animate);
                 calcframe();
             }
             function onKeyDown(evt) {
+            console.log(evt.keyCode);
                 switch (evt.keyCode) {
                     case 87: // 'w'
                         wPressed = true;
@@ -574,6 +502,12 @@
                         break;
                     case 68: // 'd'
                         dPressed = true;
+                        break;
+                    case 81: // 'q'
+                        qPressed = true;
+                        break;
+                    case 69: // 'e'
+                        ePressed = true;
                         break;
                 }
             }
@@ -592,6 +526,12 @@
                     case 68: // 'd'
                         dPressed = false;
                         break;
+                    case 81: // 'q'
+                        qPressed = false;
+                        break;
+                    case 69: // 'e'
+                        ePressed = false;
+                        break;
                 }
             }
 
@@ -602,17 +542,18 @@
                     mouse_info.x = e.layerX;
                     mouse_info.y = e.layerY;
                     mouse_info.button = e.button;
+                    /*//Mouse control on borders
                     if(mouse_info.x<window.innerWidth/20.0)aMouse=true;else aMouse=false;
                     if(mouse_info.x>window.innerWidth-window.innerWidth/20.0)dMouse=true;else dMouse=false;
                     if(mouse_info.y<window.innerHeight/20.0)wMouse=true;else wMouse=false;
-                    if(mouse_info.y>window.innerHeight-window.innerHeight/20.0)sMouse=true;else sMouse=false;
+                    if(mouse_info.y>window.innerHeight-window.innerHeight/20.0)sMouse=true;else sMouse=false;*/
             };
 
             function updateMouseCoordinates() {
                     var vector = new THREE.Vector3((mouse_info.x / window.innerWidth) * 2 - 1, - (mouse_info.y / window.innerHeight) * 2 + 1, 0.5);
                     projector.unprojectVector(vector, camera);
 
-                    var ray = new THREE.Raycaster( camera.position, vector.subSelf( camera.position ).normalize() );
+                    var ray = new THREE.Raycaster( camera.position, vector.sub( camera.position ).normalize() );
 
                     var intersection = ray.intersectObject(plane);
                     if (intersection.length === 0) {
@@ -670,6 +611,7 @@
                 if (lastFrameTime !== null)
                 {
                     var dt = now - lastFrameTime;
+
                     var dYaw = dt * moveSpeed;
                     if (wPressed||wMouse) {
                         cpos.y += dYaw;
@@ -683,6 +625,20 @@
                     if (dPressed||dMouse) {
                         cpos.x += dYaw;
                     }
+                    if(House!=null){
+                        House.itime+=dt;
+                        if(House.itime>=1.0){
+                            House.havebar+=1;
+                            House.itime=.0;
+                        }
+                        if (qPressed) {
+                            House.rotation.z+=0.1;
+                        }
+                        if (ePressed) {
+                            House.rotation.z-=0.1;
+                        }
+                    }
+
                 }
                 lastFrameTime = now;
                 camera.position = cpos;//new THREE.Vector3(camera.position.x-(Math.abs((camera.position.x-cpos.x)/2.0)<0.1?0:(camera.position.x-cpos.x)/2.0),cpos.y,cpos.z);
@@ -695,6 +651,13 @@
                         }
                     //}
                 }
+                THREE.AnimationHandler.update( globalclock.getDelta() );
+                for (var i = 0, n = Chars.length; i < n; i ++) {
+                        if(Chars[i].mesh){
+                            Chars[i].moveTick();
+                        }
+                }
+                if(House!=null)buildHouse(House);
                 //renderer.render(scene, camera);
                 }
 
