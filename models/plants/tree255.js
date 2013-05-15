@@ -26,7 +26,7 @@
 	"colorSpecular" : [0.1, 0.1, 0.1],
 	"depthTest" : true,
 	"depthWrite" : true,
-	"mapDiffuse" : "trunk3.png",
+	"mapDiffuse" : "trunk3.jpg",
 	"mapDiffuseWrap" : ["repeat", "repeat"],
 	"shading" : "Lambert",
 	"specularCoef" : 50,
